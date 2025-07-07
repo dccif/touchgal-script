@@ -13,6 +13,7 @@ export default defineConfig({
         description: '自动将TouchGal网站上的VNDB ID转换为可点击的链接',
         version: '1.0.0',
         author: 'dccif',
+        license: 'MIT',
         match: ['https://www.touchgal.io/*', 'https://www.touchgal.us/*'],
         grant: 'none',
         'run-at': 'document-idle',

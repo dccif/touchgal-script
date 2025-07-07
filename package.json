@@ -1,8 +1,22 @@
 {
   "name": "touch-script",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "license": "MIT",
+  "author": "dccif",
+  "description": "TouchGal VNDB链接转换器 - 自动将TouchGal网站上的VNDB ID转换为可点击的链接",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dccif/touchgal-script.git"
+  },
+  "keywords": [
+    "userscript",
+    "touchgal",
+    "vndb",
+    "tampermonkey",
+    "greasemonkey"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
