@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TouchGal VNDB链接转换器
 // @namespace    https://github.com/dccif
-// @version      1.0.3
+// @version      1.0.4
 // @author       dccif
 // @description  自动将TouchGal网站上的VNDB ID转换为可点击的链接
 // @license      MIT
@@ -20,19 +20,13 @@
   let stylesCached = false;
   let cachedRefClass = "";
   let cachedRefRole = null;
-  function isPageReady() {
-    var _a;
-    if (document.readyState !== "complete") return false;
-    const hasGrid = document.querySelector('div[class*="grid"]');
-    const hasFlex = document.querySelector('div[class*="flex"]');
-    if (!hasGrid || !hasFlex) return false;
-    const spans = document.querySelectorAll("span");
-    if (!spans.length) return false;
-    const bodyText = (_a = document.body.textContent) == null ? void 0 : _a.trim();
-    if (!bodyText || bodyText.length < 50) return false;
-    return true;
+  let observer = null;
+  let debounceTimer = null;
+  function shouldRun() {
+    const { href, pathname } = location;
+    return href.includes("?") || href.includes("#") || pathname !== "/";
   }
-  function cacheStyles() {
+  function tryCacheStyles() {
     if (stylesCached) return;
     const refLink = document.querySelector(".kun-prose a");
     if (refLink) {
@@ -42,12 +36,8 @@
       console.log("✅ 样式信息已缓存");
     }
   }
-  function execute() {
+  function replaceVNDBIds() {
     if (executed) return;
-    const { href, pathname } = location;
-    if (!(href.includes("?") || href.includes("#") || pathname !== "/")) return;
-    if (!isPageReady()) return;
-    cacheStyles();
     const vndbSpans = document.querySelectorAll("span");
     if (!vndbSpans.length) return;
     const vndbRegex = /VNDB ID:\s*(v\d+)/;
@@ -83,14 +73,72 @@
     if (hasChanges) {
       executed = true;
       console.log("✅ VNDB链接替换完成");
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
     }
   }
-  function poll() {
-    execute();
-    if (!executed) {
-      requestAnimationFrame(poll);
+  function checkGridAndFlex() {
+    return !!document.querySelector('div[class*="grid"] div[class*="flex"]');
+  }
+  function debouncedHandle() {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+    debounceTimer = window.setTimeout(() => {
+      if (executed) return;
+      tryCacheStyles();
+      if (checkGridAndFlex()) {
+        replaceVNDBIds();
+      }
+      debounceTimer = null;
+    }, 100);
+  }
+  function handleMutations(mutations) {
+    if (executed) return;
+    let hasRelevantChange = false;
+    for (const mutation of mutations) {
+      if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
+        hasRelevantChange = true;
+        break;
+      } else if (mutation.type === "attributes" && mutation.attributeName === "class" && mutation.target instanceof Element) {
+        const className = mutation.target.className;
+        if (className.includes("grid") || className.includes("flex")) {
+          hasRelevantChange = true;
+          break;
+        }
+      }
+    }
+    if (hasRelevantChange) {
+      debouncedHandle();
     }
   }
-  poll();
+  function startObserver() {
+    if (!shouldRun() || executed) return;
+    observer = new MutationObserver(handleMutations);
+    observer.observe(document.body, {
+      childList: true,
+      // 监听子元素变化
+      subtree: true,
+      // 监听所有后代
+      attributes: true,
+      // 监听属性变化
+      attributeFilter: ["class"],
+      // 只监听class属性
+      attributeOldValue: false,
+      // 不需要旧值
+      characterData: false,
+      // 不监听文本内容
+      characterDataOldValue: false
+    });
+    console.log("🔍 开始监听DOM变化");
+    debouncedHandle();
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startObserver);
+  } else {
+    startObserver();
+  }
 
 })();

@@ -3,30 +3,17 @@ let executed = false;
 let stylesCached = false;
 let cachedRefClass = "";
 let cachedRefRole: string | null = null;
+let observer: MutationObserver | null = null;
+let debounceTimer: number | null = null;
 
-// 更可靠的页面加载检测
-function isPageReady(): boolean {
-  // 1. 检查基本DOM状态
-  if (document.readyState !== "complete") return false;
-
-  // 2. 检查关键元素是否存在
-  const hasGrid = document.querySelector('div[class*="grid"]');
-  const hasFlex = document.querySelector('div[class*="flex"]');
-  if (!hasGrid || !hasFlex) return false;
-
-  // 3. 检查是否有span元素（目标元素）
-  const spans = document.querySelectorAll("span");
-  if (!spans.length) return false;
-
-  // 4. 检查页面是否有实际内容（避免空白页面）
-  const bodyText = document.body.textContent?.trim();
-  if (!bodyText || bodyText.length < 50) return false;
-
-  return true;
+// 检查URL是否需要运行脚本
+function shouldRun(): boolean {
+  const { href, pathname } = location;
+  return href.includes("?") || href.includes("#") || pathname !== "/";
 }
 
-// 缓存样式信息
-function cacheStyles(): void {
+// 尝试缓存样式信息
+function tryCacheStyles(): void {
   if (stylesCached) return;
 
   const refLink = document.querySelector(".kun-prose a") as HTMLAnchorElement;
@@ -38,29 +25,16 @@ function cacheStyles(): void {
   }
 }
 
-// 主执行函数
-function execute(): void {
+// 执行VNDB ID替换
+function replaceVNDBIds(): void {
   if (executed) return;
 
-  // 快速检查URL
-  const { href, pathname } = location;
-  if (!(href.includes("?") || href.includes("#") || pathname !== "/")) return;
-
-  // 检查页面是否真正准备就绪
-  if (!isPageReady()) return;
-
-  // 尝试缓存样式（如果还没缓存的话）
-  cacheStyles();
-
-  // 批量查询所有需要的元素
   const vndbSpans = document.querySelectorAll("span");
   if (!vndbSpans.length) return;
 
-  // 正则表达式复用
   const vndbRegex = /VNDB ID:\s*(v\d+)/;
   let hasChanges = false;
 
-  // 优化的替换逻辑
   for (let i = 0; i < vndbSpans.length; i++) {
     const span = vndbSpans[i];
     const text = span.textContent;
@@ -108,16 +82,102 @@ function execute(): void {
   if (hasChanges) {
     executed = true;
     console.log("✅ VNDB链接替换完成");
+
+    // 停止观察
+    if (observer) {
+      observer.disconnect();
+      observer = null;
+    }
   }
 }
 
-// 优化的轮询机制 - 使用requestAnimationFrame提高性能
-function poll(): void {
-  execute();
-  if (!executed) {
-    requestAnimationFrame(poll);
+// 检查grid元素及其flex子元素（优化版）
+function checkGridAndFlex(): boolean {
+  // 使用更高效的单次查询
+  return !!document.querySelector('div[class*="grid"] div[class*="flex"]');
+}
+
+// 防抖处理函数
+function debouncedHandle(): void {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+  }
+
+  debounceTimer = window.setTimeout(() => {
+    if (executed) return;
+
+    // 每次变化时都尝试缓存样式
+    tryCacheStyles();
+
+    // 检查grid和flex结构
+    if (checkGridAndFlex()) {
+      // 立即尝试替换
+      replaceVNDBIds();
+    }
+
+    debounceTimer = null;
+  }, 100); // 100ms防抖
+}
+
+// DOM变化处理函数（优化版）
+function handleMutations(mutations: MutationRecord[]): void {
+  if (executed) return;
+
+  // 快速过滤：只处理相关变化
+  let hasRelevantChange = false;
+
+  for (const mutation of mutations) {
+    // 检查是否是我们关心的变化
+    if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
+      // 有新元素添加
+      hasRelevantChange = true;
+      break;
+    } else if (
+      mutation.type === "attributes" &&
+      mutation.attributeName === "class" &&
+      mutation.target instanceof Element
+    ) {
+      // class属性变化，检查是否包含grid或flex
+      const className = (mutation.target as Element).className;
+      if (className.includes("grid") || className.includes("flex")) {
+        hasRelevantChange = true;
+        break;
+      }
+    }
+  }
+
+  if (hasRelevantChange) {
+    debouncedHandle();
   }
 }
 
-// 启动
-poll();
+// 启动监听器（优化版）
+function startObserver(): void {
+  if (!shouldRun() || executed) return;
+
+  // 创建观察器
+  observer = new MutationObserver(handleMutations);
+
+  // 优化的观察配置
+  observer.observe(document.body, {
+    childList: true, // 监听子元素变化
+    subtree: true, // 监听所有后代
+    attributes: true, // 监听属性变化
+    attributeFilter: ["class"], // 只监听class属性
+    attributeOldValue: false, // 不需要旧值
+    characterData: false, // 不监听文本内容
+    characterDataOldValue: false,
+  });
+
+  console.log("🔍 开始监听DOM变化");
+
+  // 立即检查一次（使用防抖）
+  debouncedHandle();
+}
+
+// 等待DOM基本就绪后启动
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", startObserver);
+} else {
+  startObserver();
+}
