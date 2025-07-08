@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TouchGal VNDB链接转换器
 // @namespace    https://github.com/dccif
-// @version      1.0.0
+// @version      1.0.1
 // @author       dccif
 // @description  自动将TouchGal网站上的VNDB ID转换为可点击的链接
 // @license      MIT
