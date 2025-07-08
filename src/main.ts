@@ -1,27 +1,60 @@
 // 脚本执行状态
 let executed = false;
+let stylesCached = false;
+let cachedRefClass = "";
+let cachedRefRole: string | null = null;
 
-// 主执行函数 - 合并所有逻辑以减少函数调用开销
+// 更可靠的页面加载检测
+function isPageReady(): boolean {
+  // 1. 检查基本DOM状态
+  if (document.readyState !== "complete") return false;
+
+  // 2. 检查关键元素是否存在
+  const hasGrid = document.querySelector('div[class*="grid"]');
+  const hasFlex = document.querySelector('div[class*="flex"]');
+  if (!hasGrid || !hasFlex) return false;
+
+  // 3. 检查是否有span元素（目标元素）
+  const spans = document.querySelectorAll("span");
+  if (!spans.length) return false;
+
+  // 4. 检查页面是否有实际内容（避免空白页面）
+  const bodyText = document.body.textContent?.trim();
+  if (!bodyText || bodyText.length < 50) return false;
+
+  return true;
+}
+
+// 缓存样式信息
+function cacheStyles(): void {
+  if (stylesCached) return;
+
+  const refLink = document.querySelector(".kun-prose a") as HTMLAnchorElement;
+  if (refLink) {
+    cachedRefClass = refLink.className || "";
+    cachedRefRole = refLink.getAttribute("role");
+    stylesCached = true;
+    console.log("✅ 样式信息已缓存");
+  }
+}
+
+// 主执行函数
 function execute(): void {
   if (executed) return;
 
-  // 快速检查URL - 内联逻辑避免函数调用
+  // 快速检查URL
   const { href, pathname } = location;
   if (!(href.includes("?") || href.includes("#") || pathname !== "/")) return;
 
-  // 高效检查页面加载状态 - 使用更精确的选择器
-  const gridWithFlex = document.querySelector(
-    'div[class*="grid"] div[class*="flex"]'
-  );
-  if (!gridWithFlex) return;
+  // 检查页面是否真正准备就绪
+  if (!isPageReady()) return;
+
+  // 尝试缓存样式（如果还没缓存的话）
+  cacheStyles();
 
   // 批量查询所有需要的元素
   const vndbSpans = document.querySelectorAll("span");
   if (!vndbSpans.length) return;
-
-  // 获取样式参考（可选）
-  const refLink = document.querySelector(".kun-prose a") as HTMLAnchorElement;
-  const { className: refClass = "", role: refRole = null } = refLink || {};
 
   // 正则表达式复用
   const vndbRegex = /VNDB ID:\s*(v\d+)/;
@@ -55,11 +88,11 @@ function execute(): void {
       link.rel = "noopener noreferrer";
 
       // 应用样式
-      if (refClass) {
-        link.className = refClass;
+      if (cachedRefClass) {
+        link.className = cachedRefClass;
       }
-      if (refRole) {
-        link.setAttribute("role", refRole);
+      if (cachedRefRole) {
+        link.setAttribute("role", cachedRefRole);
       }
 
       fragment.appendChild(link);
