@@ -38,12 +38,38 @@ function execute(): void {
     if (!match) continue;
 
     const vndbId = match[1];
+    const parentNode = span.parentNode;
 
-    // 高效的DOM构建
-    span.innerHTML = `VNDB ID: <a href="https://vndb.org/${vndbId}" target="_blank" rel="noopener noreferrer"${refClass ? ` class="${refClass}"` : ""}${refRole ? ` role="${refRole}"` : ""}>${vndbId}</a>`;
+    if (parentNode) {
+      // 创建新的内容片段
+      const fragment = document.createDocumentFragment();
 
-    hasChanges = true;
-    console.log(`替换VNDB ID: ${vndbId}`);
+      // 添加前缀文本
+      fragment.appendChild(document.createTextNode("VNDB ID: "));
+
+      // 创建链接元素
+      const link = document.createElement("a");
+      link.href = `https://vndb.org/${vndbId}`;
+      link.textContent = vndbId;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+
+      // 应用样式
+      if (refClass) {
+        link.className = refClass;
+      }
+      if (refRole) {
+        link.setAttribute("role", refRole);
+      }
+
+      fragment.appendChild(link);
+
+      // 在原位置替换
+      parentNode.replaceChild(fragment, span);
+
+      hasChanges = true;
+      console.log(`替换VNDB ID: ${vndbId}`);
+    }
   }
 
   if (hasChanges) {
