@@ -16,66 +16,43 @@
 (function () {
   'use strict';
 
-  function shouldRunScript() {
-    const url = window.location.href;
-    const hasParams = url.includes("?") || url.includes("#");
-    const hasPath = window.location.pathname !== "/";
-    return hasParams || hasPath;
-  }
-  let scriptExecuted = false;
-  function replaceVNDBIds() {
-    if (scriptExecuted) {
-      return;
-    }
-    const spans = document.querySelectorAll("span");
-    if (spans.length === 0) {
-      return;
-    }
-    const referenceLink = document.querySelector(".kun-prose a");
-    if (!referenceLink) {
-      return;
-    }
-    const linkClassName = referenceLink.className;
-    const linkRole = referenceLink.getAttribute("role");
-    let hasReplaced = false;
-    spans.forEach((span) => {
+  let executed = false;
+  function execute() {
+    if (executed) return;
+    const { href, pathname } = location;
+    if (!(href.includes("?") || href.includes("#") || pathname !== "/")) return;
+    const gridWithFlex = document.querySelector(
+      'div[class*="grid"] div[class*="flex"]'
+    );
+    if (!gridWithFlex) return;
+    const vndbSpans = document.querySelectorAll("span");
+    if (!vndbSpans.length) return;
+    const refLink = document.querySelector(".kun-prose a");
+    const { className: refClass = "", role: refRole = null } = refLink || {};
+    const vndbRegex = /VNDB ID:\s*(v\d+)/;
+    let hasChanges = false;
+    for (let i = 0; i < vndbSpans.length; i++) {
+      const span = vndbSpans[i];
       const text = span.textContent;
-      if (text && text.includes("VNDB ID:")) {
-        const match = text.match(/VNDB ID:\s*(v\d+)/);
-        if (match) {
-          const vndbId = match[1];
-          const vndbUrl = `https://vndb.org/${vndbId}`;
-          span.innerHTML = "";
-          span.appendChild(document.createTextNode("VNDB ID: "));
-          const link = document.createElement("a");
-          link.href = vndbUrl;
-          link.textContent = vndbId;
-          link.target = "_blank";
-          link.rel = "noopener noreferrer";
-          link.className = linkClassName;
-          if (linkRole) {
-            link.setAttribute("role", linkRole);
-          }
-          span.appendChild(link);
-          hasReplaced = true;
-          console.log(`替换VNDB ID: ${vndbId}`);
-        }
-      }
-    });
-    if (hasReplaced) {
-      scriptExecuted = true;
+      if (!(text == null ? void 0 : text.includes("VNDB ID:"))) continue;
+      const match = text.match(vndbRegex);
+      if (!match) continue;
+      const vndbId = match[1];
+      span.innerHTML = `VNDB ID: <a href="https://vndb.org/${vndbId}" target="_blank" rel="noopener noreferrer"${refClass ? ` class="${refClass}"` : ""}${refRole ? ` role="${refRole}"` : ""}>${vndbId}</a>`;
+      hasChanges = true;
+      console.log(`替换VNDB ID: ${vndbId}`);
+    }
+    if (hasChanges) {
+      executed = true;
       console.log("✅ VNDB链接替换完成");
     }
   }
-  function tryExecute() {
-    if (!shouldRunScript() || scriptExecuted) {
-      return;
-    }
-    replaceVNDBIds();
-    if (!scriptExecuted) {
-      setTimeout(tryExecute, 500);
+  function poll() {
+    execute();
+    if (!executed) {
+      requestAnimationFrame(poll);
     }
   }
-  tryExecute();
+  poll();
 
 })();
