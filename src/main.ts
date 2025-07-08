@@ -3,8 +3,14 @@ let executed = false;
 let stylesCached = false;
 let cachedRefClass = "";
 let cachedRefRole: string | null = null;
-let observer: MutationObserver | null = null;
-let debounceTimer: number | null = null;
+let styleAttempts = 0;
+let vndbAttempts = 0;
+let pollCount = 0;
+let currentInterval = 300; // 初始轮询间隔
+const maxStyleAttempts = 5; // 增加样式尝试次数
+const maxVndbAttempts = 8; // 增加VNDB尝试次数
+const maxPollCount = 30; // 最大轮询次数（约15秒）
+const intervals = [300, 500, 800, 1200, 2000]; // 递增间隔序列
 
 // 检查URL是否需要运行脚本
 function shouldRun(): boolean {
@@ -12,25 +18,47 @@ function shouldRun(): boolean {
   return href.includes("?") || href.includes("#") || pathname !== "/";
 }
 
-// 尝试缓存样式信息
+// 尝试缓存样式信息（自适应次数）
 function tryCacheStyles(): void {
-  if (stylesCached) return;
+  if (stylesCached || styleAttempts >= maxStyleAttempts) return;
 
+  styleAttempts++;
   const refLink = document.querySelector(".kun-prose a") as HTMLAnchorElement;
+
   if (refLink) {
     cachedRefClass = refLink.className || "";
     cachedRefRole = refLink.getAttribute("role");
     stylesCached = true;
     console.log("✅ 样式信息已缓存");
+  } else if (styleAttempts >= maxStyleAttempts) {
+    // 多次尝试后使用默认样式
+    stylesCached = true;
+    console.log("⚠️ 未找到参考样式，使用默认样式");
   }
 }
 
-// 执行VNDB ID替换
-function replaceVNDBIds(): void {
-  if (executed) return;
+// 检查页面是否准备就绪
+function isPageReady(): boolean {
+  // 检查是否有grid和flex元素
+  const hasGrid = document.querySelector('div[class*="grid"]');
+  const hasFlex = document.querySelector('div[class*="flex"]');
+  return !!(hasGrid && hasFlex);
+}
+
+// 执行VNDB ID替换（限制尝试次数）
+function replaceVNDBIds(): boolean {
+  if (executed) return true;
+
+  vndbAttempts++;
 
   const vndbSpans = document.querySelectorAll("span");
-  if (!vndbSpans.length) return;
+  if (!vndbSpans.length) {
+    if (vndbAttempts >= maxVndbAttempts) {
+      console.log("⚠️ 多次尝试后未找到VNDB ID，页面上可能没有相关内容");
+      return true; // 停止尝试
+    }
+    return false; // 继续尝试
+  }
 
   const vndbRegex = /VNDB ID:\s*(v\d+)/;
   let hasChanges = false;
@@ -82,102 +110,60 @@ function replaceVNDBIds(): void {
   if (hasChanges) {
     executed = true;
     console.log("✅ VNDB链接替换完成");
-
-    // 停止观察
-    if (observer) {
-      observer.disconnect();
-      observer = null;
-    }
-  }
-}
-
-// 检查grid元素及其flex子元素（优化版）
-function checkGridAndFlex(): boolean {
-  // 使用更高效的单次查询
-  return !!document.querySelector('div[class*="grid"] div[class*="flex"]');
-}
-
-// 防抖处理函数
-function debouncedHandle(): void {
-  if (debounceTimer) {
-    clearTimeout(debounceTimer);
+    return true;
   }
 
-  debounceTimer = window.setTimeout(() => {
-    if (executed) return;
-
-    // 每次变化时都尝试缓存样式
-    tryCacheStyles();
-
-    // 检查grid和flex结构
-    if (checkGridAndFlex()) {
-      // 立即尝试替换
-      replaceVNDBIds();
-    }
-
-    debounceTimer = null;
-  }, 100); // 100ms防抖
-}
-
-// DOM变化处理函数（优化版）
-function handleMutations(mutations: MutationRecord[]): void {
-  if (executed) return;
-
-  // 快速过滤：只处理相关变化
-  let hasRelevantChange = false;
-
-  for (const mutation of mutations) {
-    // 检查是否是我们关心的变化
-    if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
-      // 有新元素添加
-      hasRelevantChange = true;
-      break;
-    } else if (
-      mutation.type === "attributes" &&
-      mutation.attributeName === "class" &&
-      mutation.target instanceof Element
-    ) {
-      // class属性变化，检查是否包含grid或flex
-      const className = (mutation.target as Element).className;
-      if (className.includes("grid") || className.includes("flex")) {
-        hasRelevantChange = true;
-        break;
-      }
-    }
+  // 没有找到VNDB ID，检查是否达到最大尝试次数
+  if (vndbAttempts >= maxVndbAttempts) {
+    console.log("⚠️ 多次尝试后未找到VNDB ID，页面上可能没有相关内容");
+    return true; // 停止尝试
   }
 
-  if (hasRelevantChange) {
-    debouncedHandle();
-  }
+  return false; // 继续尝试
 }
 
-// 启动监听器（优化版）
-function startObserver(): void {
+// 主执行函数
+function execute(): void {
   if (!shouldRun() || executed) return;
 
-  // 创建观察器
-  observer = new MutationObserver(handleMutations);
+  // 尝试缓存样式
+  tryCacheStyles();
 
-  // 优化的观察配置
-  observer.observe(document.body, {
-    childList: true, // 监听子元素变化
-    subtree: true, // 监听所有后代
-    attributes: true, // 监听属性变化
-    attributeFilter: ["class"], // 只监听class属性
-    attributeOldValue: false, // 不需要旧值
-    characterData: false, // 不监听文本内容
-    characterDataOldValue: false,
-  });
+  // 检查页面是否准备就绪
+  if (!isPageReady()) return;
 
-  console.log("🔍 开始监听DOM变化");
+  // 确保样式已处理完成
+  if (!stylesCached) return;
 
-  // 立即检查一次（使用防抖）
-  debouncedHandle();
+  // 执行替换，返回是否应该停止尝试
+  const shouldStop = replaceVNDBIds();
+  if (shouldStop) {
+    executed = true;
+  }
 }
 
-// 等待DOM基本就绪后启动
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", startObserver);
-} else {
-  startObserver();
+// 自适应轮询
+function poll(): void {
+  pollCount++;
+
+  // 检查是否超过最大轮询次数
+  if (pollCount > maxPollCount) {
+    console.log("⚠️ 轮询超时，停止执行");
+    return;
+  }
+
+  execute();
+
+  if (!executed) {
+    // 动态调整轮询间隔
+    const intervalIndex = Math.min(
+      Math.floor(pollCount / 6),
+      intervals.length - 1
+    );
+    currentInterval = intervals[intervalIndex];
+
+    console.log(`🔄 轮询第${pollCount}次，间隔${currentInterval}ms`);
+    setTimeout(poll, currentInterval);
+  }
 }
+poll();

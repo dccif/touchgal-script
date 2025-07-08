@@ -11,7 +11,7 @@ export default defineConfig({
         namespace: "https://github.com/dccif",
         name: "TouchGal VNDB链接转换器",
         description: "自动将TouchGal网站上的VNDB ID转换为可点击的链接",
-        version: "1.0.4",
+        version: "1.0.6",
         author: "dccif",
         license: "MIT",
         match: ["https://www.touchgal.io/*", "https://www.touchgal.us/*"],
